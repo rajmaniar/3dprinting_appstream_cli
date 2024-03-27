@@ -4,10 +4,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/appstream"
 	"github.com/aws/aws-sdk-go-v2/service/appstream/types"
 	"log"
+	"os"
 )
 
 func main() {
@@ -64,7 +66,8 @@ func startFleet(ctx context.Context, client *appstream.Client, fleetName string)
 				if err != nil {
 					return fmt.Errorf("StartFleet failed with err=%w", err)
 				}
-				fmt.Printf("Started fleet")
+				fmt.Printf("Started fleet. This will take some time so try again about 10mins\n\n")
+				os.Exit(0)
 				return nil
 			default:
 				log.Fatalf("The Fleet state is %v, let that finish and try again...", f.State)
@@ -79,6 +82,7 @@ func createStreamingURL(ctx context.Context, client *appstream.Client, stackName
 		StackName: &stackName,
 		UserId:    &userName,
 		FleetName: &fleetName,
+		Validity:  aws.Int64(4 * 60 * 60), //links are valid for 4hrs
 	}
 
 	result, err := client.CreateStreamingURL(ctx, input)
