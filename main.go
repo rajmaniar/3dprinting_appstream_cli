@@ -16,18 +16,17 @@ import (
 
 func main() {
 	stackName := flag.String("stack", "3dPrinting", "The name of the AppStream stack")
-	userName := flag.String("user", "3dp", "user name prefix")
+	userName := flag.String("user", "3dp", "user name")
 	fleetName := flag.String("fleet", "3d_Printing", "Fleet name")
-	count := flag.Int64("count", 1, "Number of urls")
 	profileName := flag.String("profile", "personal", "AWS profile name")
-	studentFileName := flag.String("csv", "", "csv file of students names, creates one stream url per student (overrides count)")
+	studentFileName := flag.String("csv", "", "csv file of students names, creates one stream url per student")
 	flag.Parse()
 
 	if *stackName == "" || *userName == "" || *profileName == "" || *fleetName == "" {
 		log.Fatal("All flags are required")
 	}
 
-	streamURLCount := *count
+	streamURLCount := 1
 
 	var studentNames []string
 	if *studentFileName != "" {
@@ -36,7 +35,7 @@ func main() {
 			log.Fatalf("failed to load student file name, %v", err)
 		}
 		studentNames = names
-		streamURLCount = int64(len(studentNames))
+		streamURLCount = len(studentNames)
 	}
 
 	ctx := context.Background()
@@ -54,7 +53,7 @@ func main() {
 		log.Fatalf("startfleet failed with %v", err)
 	}
 
-	for i := 0; i < int(streamURLCount); i++ {
+	for i := 0; i < streamURLCount; i++ {
 		uN := fmt.Sprintf("%s-%d", *userName, i)
 		if studentNames != nil {
 			uN = fmt.Sprintf("%s-%s", *userName, studentNames[i])
@@ -85,7 +84,7 @@ func loadStudentsFromFile(fileName *string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reader.ReadAll failed %w", err)
 	}
-	names := make([]string, len(lines))
+	var names []string
 	for _, line := range lines {
 		names = append(names, strings.TrimSpace(strings.Replace(line[0], " ", "-", -1)))
 	}
