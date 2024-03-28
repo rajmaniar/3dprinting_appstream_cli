@@ -20,6 +20,7 @@ func main() {
 	fleetName := flag.String("fleet", "3d_Printing", "Fleet name")
 	profileName := flag.String("profile", "personal", "AWS profile name")
 	studentFileName := flag.String("csv", "", "csv file of students names, creates one stream url per student")
+	stop := flag.Bool("stop", false, "Stops the fleet")
 	flag.Parse()
 
 	if *stackName == "" || *userName == "" || *profileName == "" || *fleetName == "" {
@@ -49,6 +50,13 @@ func main() {
 
 	client := appstream.NewFromConfig(cfg)
 
+	if *stop {
+		if err := stopFleet(ctx, client, *fleetName); err != nil {
+			log.Fatalf("stopFleet failed with %v", err)
+		}
+		log.Printf("Fleet stopping...")
+		return
+	}
 	if err := startFleet(ctx, client, *fleetName); err != nil {
 		log.Fatalf("startfleet failed with %v", err)
 	}
@@ -91,6 +99,12 @@ func loadStudentsFromFile(fileName *string) ([]string, error) {
 	return names, nil
 }
 
+func stopFleet(ctx context.Context, client *appstream.Client, fleetName string) error {
+	fleet := &appstream.StopFleetInput{Name: &fleetName}
+	_, err := client.StopFleet(ctx, fleet)
+	return err
+}
+
 func startFleet(ctx context.Context, client *appstream.Client, fleetName string) error {
 	fleet := &appstream.DescribeFleetsInput{Names: []string{fleetName}}
 	fleets, err := client.DescribeFleets(ctx, fleet)
@@ -101,6 +115,7 @@ func startFleet(ctx context.Context, client *appstream.Client, fleetName string)
 		if *f.Name == fleetName {
 			switch f.State {
 			case types.FleetStateRunning:
+				fmt.Printf("Feel is running! \n%+v\n", *f.ComputeCapacityStatus)
 				return nil
 			case types.FleetStateStopped:
 				fmt.Printf("Starting Fleet %v\n", *f.Name)
