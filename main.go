@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/csv"
 	"flag"
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -10,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/appstream/types"
 	"log"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -18,10 +20,23 @@ func main() {
 	fleetName := flag.String("fleet", "3d_Printing", "Fleet name")
 	count := flag.Int64("count", 1, "Number of urls")
 	profileName := flag.String("profile", "personal", "AWS profile name")
+	studentFileName := flag.String("csv", "", "csv file of students names, creates one stream url per student (overrides count)")
 	flag.Parse()
 
 	if *stackName == "" || *userName == "" || *profileName == "" || *fleetName == "" {
 		log.Fatal("All flags are required")
+	}
+
+	streamURLCount := *count
+
+	var studentNames []string
+	if *studentFileName != "" {
+		names, err := loadStudentsFromFile(studentFileName)
+		if err != nil {
+			log.Fatalf("failed to load student file name, %v", err)
+		}
+		studentNames = names
+		streamURLCount = int64(len(studentNames))
 	}
 
 	ctx := context.Background()
@@ -39,14 +54,42 @@ func main() {
 		log.Fatalf("startfleet failed with %v", err)
 	}
 
-	for i := 0; i < int(*count); i++ {
-		url, err := createStreamingURL(ctx, client, *stackName, *userName, *fleetName)
+	for i := 0; i < int(streamURLCount); i++ {
+		uN := fmt.Sprintf("%s-%d", *userName, i)
+		if studentNames != nil {
+			uN = fmt.Sprintf("%s-%s", *userName, studentNames[i])
+		}
+
+		url, err := createStreamingURL(ctx, client, *stackName, uN, *fleetName)
 		if err != nil {
 			log.Fatalf("Failed to create AppStream streaming URL: %v", err)
 		}
+		if studentNames != nil {
+			fmt.Printf("Slicer for %s: %s\n", studentNames[i], url)
+		} else {
+			fmt.Printf("Slicer #%d: %s\n", i, url)
+		}
 
-		fmt.Printf("Streaming URL: %s\n", url)
 	}
+}
+
+func loadStudentsFromFile(fileName *string) ([]string, error) {
+	file, err := os.Open(*fileName)
+	if err != nil {
+		return nil, fmt.Errorf("os.Open failed %w", err)
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	lines, err := reader.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("reader.ReadAll failed %w", err)
+	}
+	names := make([]string, len(lines))
+	for _, line := range lines {
+		names = append(names, strings.TrimSpace(strings.Replace(line[0], " ", "-", -1)))
+	}
+	return names, nil
 }
 
 func startFleet(ctx context.Context, client *appstream.Client, fleetName string) error {
