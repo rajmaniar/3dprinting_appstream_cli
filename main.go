@@ -21,6 +21,7 @@ func main() {
 	profileName := flag.String("profile", "personal", "AWS profile name")
 	studentFileName := flag.String("csv", "", "csv file of students names, creates one stream url per student")
 	stop := flag.Bool("stop", false, "Stops the fleet")
+	prewarmCapacity := flag.Int("prewarm", 0, "Pre-warm the fleet with this many instances")
 	flag.Parse()
 
 	if *stackName == "" || *userName == "" || *profileName == "" || *fleetName == "" {
@@ -55,6 +56,13 @@ func main() {
 			log.Fatalf("stopFleet failed with %v", err)
 		}
 		log.Printf("Fleet stopping...")
+		return
+	}
+	if *prewarmCapacity > 0 {
+		if err := setCapacity(ctx, client, *fleetName, int32(*prewarmCapacity)); err != nil {
+			log.Fatalf("setCapacity failed with %v", err)
+		}
+		log.Printf("Fleet Capacity Set to %v", *prewarmCapacity)
 		return
 	}
 	if err := startFleet(ctx, client, *fleetName); err != nil {
@@ -99,6 +107,22 @@ func loadStudentsFromFile(fileName *string) ([]string, error) {
 	return names, nil
 }
 
+func setCapacity(ctx context.Context, client *appstream.Client, fleetName string, capacity int32) error {
+	updateFleetInput := &appstream.UpdateFleetInput{
+		Name: &fleetName,
+		ComputeCapacity: &types.ComputeCapacity{
+			DesiredInstances: &capacity,
+		},
+	}
+	if output, err := client.UpdateFleet(ctx, updateFleetInput); err != nil {
+		return fmt.Errorf("client.UpdateFleet failed with %w", err)
+	} else {
+
+		fmt.Printf("Desired Capacity of %s updated -- running %d of %d desired", fleetName, *output.Fleet.ComputeCapacityStatus.Running, *output.Fleet.ComputeCapacityStatus.Desired)
+	}
+	return nil
+}
+
 func stopFleet(ctx context.Context, client *appstream.Client, fleetName string) error {
 	fleetD := &appstream.DescribeFleetsInput{Names: []string{fleetName}}
 	fleets, err := client.DescribeFleets(ctx, fleetD)
@@ -127,7 +151,7 @@ func startFleet(ctx context.Context, client *appstream.Client, fleetName string)
 		if *f.Name == fleetName {
 			switch f.State {
 			case types.FleetStateRunning:
-				fmt.Printf("Fleet is running already with %d instances\n", *f.ComputeCapacityStatus.Running)
+				fmt.Printf("Fleet is running already with %d instances of %d desired\n", *f.ComputeCapacityStatus.Running, *f.ComputeCapacityStatus.Desired)
 				return nil
 			case types.FleetStateStopped:
 				fmt.Printf("Starting Fleet %v\n", *f.Name)
